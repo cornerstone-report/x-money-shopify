@@ -18,6 +18,7 @@ database.sqlite
 !.env.example
 
 /extensions/*/dist
+/extensions/*/node_modules
 
 # Shopify CLI local state
 .shopify/*

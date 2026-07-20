@@ -143,9 +143,19 @@ Shopify CLI will tunnel, install on your dev store, and register webhooks.
 ## Merchant workflow
 
 1. **Settings** → save your X handle (no `@` needed).
-2. In Shopify Admin → **Settings → Payments**, add a **manual payment method** named exactly **`X Money`**. In the checkout instructions, tell buyers to send X Money to your handle and include the reference from this app / order note.
-3. When an order arrives with that method, the webhook creates **`XM-XXXXX`**, tags the order `x-money`, and appends the reference to the order note.
-4. When funds land on X, open the app → **Mark paid** (local record first; best-effort mark paid + note in Shopify).
+2. In Shopify Admin → **Settings → Payments**, add a **manual payment method** named **`X Money`**.
+3. In the checkout editor, add the **X Money payment instructions** block to the **Thank you** and/or **Order status** pages (works on all plans — not Plus-only).
+4. When an order arrives with that method, the webhook creates **`XM-XXXXX`**, tags the order `x-money`, appends the reference to the order note, and the Thank you block shows amount + reference + your handle.
+5. When funds land on X, open the app → **Mark paid** (local record first; best-effort mark paid + note in Shopify).
+
+### Thank you / Order status extension
+
+Path: `extensions/x-money-instructions/`
+
+- Targets: `purchase.thank-you.block.render`, `customer-account.order-status.block.render`
+- Shows only for X Money pending orders (looks up our DB via session-token API)
+- Displays amount, `XM-…` reference, merchant handle, copy buttons
+- Privacy: zero customer PII in the extension payload
 
 ---
 
@@ -165,7 +175,11 @@ app/
     x-money.server.ts         # Payment method detection
     xm-reference.server.ts    # XM-XXXXX allocation
     shopify-order.server.ts   # Tag / note / mark-paid Admin helpers
+    metafields.server.ts      # Shop/order metafields for the extension
     shop-data.server.ts       # Privacy hard-wipe helpers
+  routes/
+    api.x-money.instructions.tsx  # Session-token API for the extension
+extensions/x-money-instructions/  # Thank you + Order status UI
 prisma/schema.prisma
 shopify.app.toml
 ```

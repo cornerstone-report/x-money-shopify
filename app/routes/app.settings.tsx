@@ -16,12 +16,22 @@ import { useCallback, useEffect, useState } from "react";
 
 import prisma from "../db.server";
 import { authenticate } from "../shopify.server";
+import { setShopXMoneyConfig } from "../utils/metafields.server";
 import { getOrCreateShopSettings } from "../utils/shop-data.server";
 import { isValidXHandle, normalizeXHandle } from "../utils/x-handle";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const settings = await getOrCreateShopSettings(session.shop);
+
+  // Keep shop metafields in sync so the Thank you extension can resolve app URL + handle.
+  const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (appUrl) {
+    await setShopXMoneyConfig(admin, {
+      xHandle: settings.xHandle,
+      appUrl,
+    });
+  }
 
   return json({
     xHandle: settings.xHandle,
@@ -29,7 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { session } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const form = await request.formData();
   const raw = String(form.get("xHandle") ?? "");
   const xHandle = normalizeXHandle(raw);
@@ -51,6 +61,11 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     create: { shop: session.shop, xHandle },
     update: { xHandle },
   });
+
+  const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (appUrl) {
+    await setShopXMoneyConfig(admin, { xHandle, appUrl });
+  }
 
   return json({ ok: true as const, xHandle });
 };
@@ -144,6 +159,12 @@ export default function SettingsPage() {
                 <Text as="p" variant="bodyMd" tone="subdued">
                   This app does not talk to X. There is no public X merchant
                   API yet. You verify payment in X and click Mark paid here.
+                </Text>
+                <Text as="p" variant="bodyMd" tone="subdued">
+                  Saving also publishes your handle to the Thank you / Order
+                  status extension so buyers see clear pay instructions after
+                  checkout. Place the &quot;X Money payment instructions&quot;
+                  block in the checkout editor.
                 </Text>
               </BlockStack>
             </Card>

@@ -1,0 +1,34 @@
+api_version = "2025-10"
+
+[[extensions]]
+name = "X Money payment instructions"
+handle = "x-money-instructions"
+type = "ui_extension"
+uid = "a7c3e91f-4b2d-8e06-9f14-2d8c6b0a1e5f3c7d9a2b"
+description = "Shows X Money payment amount, XM reference, and merchant handle on Thank you and Order status pages."
+
+  [extensions.capabilities]
+  # Fetch XM reference from the app after order create (webhook may race Thank you).
+  network_access = true
+
+  [[extensions.targeting]]
+  module = "./src/ThankYou.jsx"
+  target = "purchase.thank-you.block.render"
+
+  [[extensions.targeting]]
+  module = "./src/OrderStatus.jsx"
+  target = "customer-account.order-status.block.render"
+
+  # Shop-level config for the extension (handle + app origin for API calls).
+  [[extensions.metafields]]
+  namespace = "$app:x_money"
+  key = "handle"
+
+  [[extensions.metafields]]
+  namespace = "$app:x_money"
+  key = "app_url"
+
+  # Order-level XM reference (written by orders/create webhook).
+  [[extensions.metafields]]
+  namespace = "$app:x_money"
+  key = "reference"
