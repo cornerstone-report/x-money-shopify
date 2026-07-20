@@ -1,0 +1,68 @@
+// X Money for Shopify — minimal data model.
+// SQLite by default. No telemetry tables. No analytics.
+// Store only what merchants need to reconcile X Money payments.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+/// Shopify OAuth session storage (required by @shopify/shopify-app-remix).
+model Session {
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+/// Per-shop merchant settings. Only the public X handle for receiving payments.
+model ShopSettings {
+  id        String   @id @default(cuid())
+  shop      String   @unique
+  /// Merchant's X (Twitter) handle, without leading @. Example: "antistate"
+  xHandle   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// Pending or completed X Money payment records for reconciliation.
+/// Intentionally omits customer PII (name, email, address, phone).
+model PendingXMoneyPayment {
+  id             String    @id @default(cuid())
+  shop           String
+  /// Shopify order GID numeric id (e.g. "5678901234")
+  shopifyOrderId String
+  /// Merchant-facing order name (e.g. "#1042")
+  orderName      String
+  /// Clean reference for the X Money note / memo: XM-XXXXX
+  xmReference    String
+  /// Order total as decimal string to avoid float drift (e.g. "49.00")
+  amount         String
+  currency       String    @default("USD")
+  /// pending | paid
+  status         String    @default("pending")
+  createdAt      DateTime  @default(now())
+  paidAt         DateTime?
+
+  @@unique([shop, shopifyOrderId])
+  @@unique([shop, xmReference])
+  @@index([shop, status])
+  @@index([shop, createdAt])
+}

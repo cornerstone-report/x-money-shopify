@@ -1,0 +1,44 @@
+# Learn more: https://shopify.dev/docs/apps/tools/cli/configuration
+
+name = "X Money for Shopify"
+client_id = ""
+application_url = "https://localhost"
+embedded = true
+
+[build]
+automatically_update_urls_on_dev = true
+
+[access_scopes]
+# Minimal scopes: read orders for webhooks/history; write to mark orders paid in Shopify.
+scopes = "read_orders,write_orders"
+
+[auth]
+redirect_urls = ["https://localhost/auth/callback"]
+
+[webhooks]
+api_version = "2025-01"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/uninstalled"]
+  uri = "/webhooks/app/uninstalled"
+
+  [[webhooks.subscriptions]]
+  topics = ["app/scopes_update"]
+  uri = "/webhooks/app/scopes_update"
+
+  [[webhooks.subscriptions]]
+  topics = ["orders/create"]
+  uri = "/webhooks/orders/create"
+
+  # App Store privacy compliance (public apps). Handlers delete or report only what we store.
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/data_request"]
+  uri = "/webhooks/customers/data_request"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["customers/redact"]
+  uri = "/webhooks/customers/redact"
+
+  [[webhooks.subscriptions]]
+  compliance_topics = ["shop/redact"]
+  uri = "/webhooks/shop/redact"
