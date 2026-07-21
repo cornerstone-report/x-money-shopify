@@ -18,11 +18,25 @@ const MAX_POLLS = 12;
  */
 export function PaymentBlock({ orderId, source }) {
   const [payload, setPayload] = useState(null);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(/** @type {string | null} */ (null));
   const [loading, setLoading] = useState(Boolean(orderId));
   const [copied, setCopied] = useState(/** @type {null | "ref" | "msg"} */ (null));
+  const [shopConfig, setShopConfig] = useState(() => readShopConfig());
 
-  const shopConfig = useMemo(() => readShopConfigFromMetafields(), []);
+  // Metafields / settings can populate after first paint — resubscribe.
+  useEffect(() => {
+    setShopConfig(readShopConfig());
+
+    const signal = shopify.appMetafields;
+    if (signal?.subscribe) {
+      return signal.subscribe(() => {
+        setShopConfig(readShopConfig());
+      });
+    }
+    return undefined;
+  }, []);
+
+  const appUrl = shopConfig.appUrl;
 
   const fetchInstructions = useCallback(async () => {
     if (!orderId) {
@@ -31,7 +45,6 @@ export function PaymentBlock({ orderId, source }) {
       return { show: false, pending: false };
     }
 
-    const appUrl = shopConfig.appUrl;
     if (!appUrl) {
       setError("missing_app_url");
       setLoading(false);
@@ -58,6 +71,8 @@ export function PaymentBlock({ orderId, source }) {
         return null;
       }
 
+      // Network access denied often surfaces as failed fetch (caught below)
+      // or opaque errors — treat 0/network as network_blocked when applicable.
       if (!response.ok && response.status !== 404) {
         throw new Error(`HTTP ${response.status}`);
       }
@@ -72,11 +87,17 @@ export function PaymentBlock({ orderId, source }) {
 
       return data;
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load");
+      const msg = err instanceof Error ? err.message : "Failed to load";
+      // Failed fetch with network_access often = capability not granted.
+      setError(
+        msg === "Failed to fetch" || msg.includes("NetworkError")
+          ? "network_blocked"
+          : msg,
+      );
       setLoading(false);
       return null;
     }
-  }, [orderId, source, shopConfig.appUrl]);
+  }, [orderId, source, appUrl]);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,7 +109,6 @@ export function PaymentBlock({ orderId, source }) {
       const data = await fetchInstructions();
       if (cancelled) return;
 
-      // Webhook may lag Thank you page — poll briefly for the pending row.
       if (data?.pending && polls < MAX_POLLS) {
         polls += 1;
         timer = setTimeout(run, POLL_MS);
@@ -107,14 +127,22 @@ export function PaymentBlock({ orderId, source }) {
       return;
     }
 
+    // Wait until appUrl is known before treating as hard failure.
+    if (!appUrl) {
+      setError("missing_app_url");
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
+    setError(null);
     run();
 
     return () => {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [fetchInstructions, orderId]);
+  }, [fetchInstructions, orderId, appUrl]);
 
   const displayHandle = payload?.xHandle || shopConfig.xHandle || "";
 
@@ -176,6 +204,37 @@ export function PaymentBlock({ orderId, source }) {
     );
   }
 
+  // Config / network problems — show a short merchant-visible hint on Thank you
+  // so blank UI is debuggable (still no customer PII).
+  if (error === "missing_app_url" || error === "network_blocked" || error === "unauthorized") {
+    return (
+      <s-box padding="base" border="base" borderRadius="base">
+        <s-stack gap="small">
+          <s-heading>Pay with X Money</s-heading>
+          {error === "missing_app_url" ? (
+            <s-text>
+              Payment instructions are not linked yet. Open the X Money app →
+              Settings, save your handle, then refresh this page.
+            </s-text>
+          ) : null}
+          {error === "network_blocked" ? (
+            <s-text>
+              Could not reach the X Money app (network access may be blocked).
+              In Partners → Apps → x-money → API access, allow network access for
+              checkout UI extensions.
+            </s-text>
+          ) : null}
+          {error === "unauthorized" ? (
+            <s-text>
+              Could not authorize with the X Money app. Restart shopify app dev
+              and try again.
+            </s-text>
+          ) : null}
+        </s-stack>
+      </s-box>
+    );
+  }
+
   // Not an X Money order (or webhook never created a row) — render nothing.
   if (!payload?.show) {
     return null;
@@ -215,37 +274,40 @@ export function PaymentBlock({ orderId, source }) {
             {copied === "msg" ? "Copied" : "Copy full message"}
           </s-button>
         </s-stack>
-
-        {error === "missing_app_url" ? (
-          <s-text tone="caution">
-            Open the X Money app Settings once so payment instructions can load.
-          </s-text>
-        ) : null}
       </s-stack>
     </s-box>
   );
 }
 
 /**
- * Read shop-owned app metafields declared in shopify.extension.toml.
- * Written by the app when Settings are saved (handle + app_url).
+ * Resolve app URL + handle from shop metafields and optional extension settings.
  */
-function readShopConfigFromMetafields() {
+function readShopConfig() {
+  let xHandle = "";
+  let appUrl = "";
+
   const entries =
     (typeof shopify !== "undefined" &&
       (shopify.appMetafields?.value || shopify.appMetafields?.current)) ||
     [];
 
-  let xHandle = "";
-  let appUrl = "";
-
   for (const entry of entries) {
-    if (entry?.target?.type && entry.target.type !== "shop") continue;
+    const type = entry?.target?.type;
+    // Prefer shop entries; if type is missing, still accept known keys.
+    if (type && type !== "shop") continue;
     const key = entry?.metafield?.key;
     const value = entry?.metafield?.value;
-    if (!key || value == null) continue;
+    if (!key || value == null || value === "") continue;
     if (key === "handle") xHandle = String(value).replace(/^@+/, "");
     if (key === "app_url") appUrl = String(value).replace(/\/$/, "");
+  }
+
+  // Optional merchant setting from checkout editor (fallback).
+  const settingsUrl =
+    typeof shopify !== "undefined" &&
+    (shopify.settings?.value?.app_url || shopify.settings?.current?.app_url);
+  if (!appUrl && settingsUrl) {
+    appUrl = String(settingsUrl).replace(/\/$/, "");
   }
 
   return { xHandle, appUrl };

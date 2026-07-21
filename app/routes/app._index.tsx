@@ -233,20 +233,20 @@ export default function PendingPaymentsPage() {
                   How this works
                 </Text>
                 <Text as="p" variant="bodyMd" tone="subdued">
-                  X does not offer a public merchant API yet. This app watches
-                  Shopify for orders paid via a manual method named{" "}
-                  <strong>X Money</strong>, issues an XM reference, and lets you
-                  mark payment received. Customer contact data is not stored.
-                </Text>
-                {xHandle ? (
-                  <Text as="p" variant="bodyMd">
-                    Buyers should send X Money to{" "}
+                  No public X merchant API yet. This app tags Shopify orders that
+                  used the manual method <strong>X Money</strong>, issues an{" "}
+                  <strong>XM-…</strong> reference, and lets you Mark paid when
+                  funds land. Buyers see amount, reference, and{" "}
+                  {xHandle ? (
                     <Text as="span" fontWeight="semibold">
                       @{xHandle}
-                    </Text>{" "}
-                    with the XM reference in the note.
-                  </Text>
-                ) : null}
+                    </Text>
+                  ) : (
+                    "your handle"
+                  )}{" "}
+                  on the Thank you page when the extension is installed. No
+                  customer PII is stored here.
+                </Text>
               </BlockStack>
             </Card>
           </BlockStack>

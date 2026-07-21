@@ -6,11 +6,23 @@ import { NavMenu } from "@shopify/app-bridge-react";
 import polarisStyles from "@shopify/polaris/build/esm/styles.css?url";
 
 import { authenticate } from "../shopify.server";
+import { setShopXMoneyConfig } from "../utils/metafields.server";
+import { getOrCreateShopSettings } from "../utils/shop-data.server";
 
 export const links = () => [{ rel: "stylesheet", href: polarisStyles }];
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+
+  // Re-publish live app_url + handle so the Thank you extension stays linked.
+  const appUrl = (process.env.SHOPIFY_APP_URL || "").replace(/\/$/, "");
+  if (appUrl) {
+    const settings = await getOrCreateShopSettings(session.shop);
+    await setShopXMoneyConfig(admin, {
+      xHandle: settings.xHandle,
+      appUrl,
+    });
+  }
 
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
 };

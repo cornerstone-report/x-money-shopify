@@ -32,3 +32,11 @@ description = "Shows X Money payment amount, XM reference, and merchant handle o
   [[extensions.metafields]]
   namespace = "$app:x_money"
   key = "reference"
+
+# Optional checkout-editor fallback if shop metafield app_url is missing.
+[settings]
+  [[settings.fields]]
+  key = "app_url"
+  type = "single_line_text_field"
+  name = "App URL (fallback)"
+  description = "Only if instructions do not load: paste your current shopify app dev tunnel URL (https://….trycloudflare.com). Normally auto-set when you save Settings in the X Money app."

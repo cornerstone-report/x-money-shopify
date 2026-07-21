@@ -1,6 +1,9 @@
 /**
  * App-owned metafields for the Checkout UI extension.
  * Namespace $app:x_money — exclusive to this app. No customer PII.
+ *
+ * Note: Shopify rejects metafieldsSet with blank values ("Value can't be blank").
+ * Never send empty strings — omit the field or skip the write.
  */
 
 import type { AdminGraphql } from "./shopify-order.server";
@@ -28,7 +31,8 @@ function logSoftFail(context: string, detail: unknown): void {
 export async function setShopXMoneyConfig(
   admin: AdminGraphql,
   params: { shopGid?: string; xHandle: string; appUrl: string },
-): Promise<void> {
+): Promise<{ ok: boolean; wrote: string[] }> {
+  const wrote: string[] = [];
   try {
     let shopId = params.shopGid;
     if (!shopId) {
@@ -47,30 +51,61 @@ export async function setShopXMoneyConfig(
     }
     if (!shopId) {
       logSoftFail("setShopXMoneyConfig", "missing shop id");
-      return;
+      return { ok: false, wrote };
     }
 
-    const metafields = [
-      {
-        ownerId: shopId,
-        namespace: X_MONEY_METAFIELD_NAMESPACE,
-        key: X_MONEY_HANDLE_KEY,
-        type: "single_line_text_field",
-        value: params.xHandle || "",
-      },
-      {
+    const appUrl = (params.appUrl || "").replace(/\/$/, "").trim();
+    const xHandle = (params.xHandle || "").replace(/^@+/, "").trim();
+
+    // Only non-empty values — empty string triggers Shopify userError.
+    type MetafieldInput = {
+      ownerId: string;
+      namespace: string;
+      key: string;
+      type: string;
+      value: string;
+    };
+    const metafields: MetafieldInput[] = [];
+
+    if (appUrl) {
+      metafields.push({
         ownerId: shopId,
         namespace: X_MONEY_METAFIELD_NAMESPACE,
         key: X_MONEY_APP_URL_KEY,
         type: "single_line_text_field",
-        value: params.appUrl.replace(/\/$/, ""),
-      },
-    ];
+        value: appUrl,
+      });
+      wrote.push("app_url");
+    } else {
+      logSoftFail(
+        "setShopXMoneyConfig",
+        "SHOPIFY_APP_URL empty — extension cannot call the app API",
+      );
+    }
+
+    if (xHandle) {
+      metafields.push({
+        ownerId: shopId,
+        namespace: X_MONEY_METAFIELD_NAMESPACE,
+        key: X_MONEY_HANDLE_KEY,
+        type: "single_line_text_field",
+        value: xHandle,
+      });
+      wrote.push("handle");
+    }
+
+    if (metafields.length === 0) {
+      return { ok: false, wrote };
+    }
 
     const response = await admin.graphql(
       `#graphql
       mutation SetShopXMoneyConfig($metafields: [MetafieldsSetInput!]!) {
         metafieldsSet(metafields: $metafields) {
+          metafields {
+            key
+            value
+          }
           userErrors {
             field
             message
@@ -81,18 +116,35 @@ export async function setShopXMoneyConfig(
     );
     const body = (await response.json()) as {
       data?: {
-        metafieldsSet?: { userErrors?: Array<{ message?: string }> };
+        metafieldsSet?: {
+          metafields?: Array<{ key?: string; value?: string }>;
+          userErrors?: Array<{ message?: string }>;
+        };
       };
+      errors?: Array<{ message?: string }>;
     };
+
+    if (body?.errors?.length) {
+      logSoftFail(
+        "metafieldsSet GraphQL errors",
+        body.errors.map((e) => e.message).join("; "),
+      );
+      return { ok: false, wrote };
+    }
+
     const errors = body?.data?.metafieldsSet?.userErrors ?? [];
     if (errors.length) {
       logSoftFail(
-        "metafieldsSet shop config",
+        "metafieldsSet shop config userErrors",
         errors.map((e) => e.message).join("; "),
       );
+      return { ok: false, wrote };
     }
+
+    return { ok: true, wrote };
   } catch (error: unknown) {
     logSoftFail("setShopXMoneyConfig threw", error);
+    return { ok: false, wrote };
   }
 }
 
@@ -104,6 +156,10 @@ export async function setOrderXmReferenceMetafield(
   admin: AdminGraphql,
   params: { shopifyOrderId: string; xmReference: string },
 ): Promise<void> {
+  if (!params.xmReference?.trim()) {
+    return;
+  }
+
   const ownerId = `gid://shopify/Order/${params.shopifyOrderId}`;
   try {
     const response = await admin.graphql(
