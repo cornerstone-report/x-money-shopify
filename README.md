@@ -155,6 +155,26 @@ prisma/schema.prisma
 
 ---
 
+## Roadmap — When X ships a merchant API
+
+This app is deliberately built as a clean reconciliation layer. The moment X exposes a real public merchant / payment-request API, the intended next steps are:
+
+1. **Payment request generation**  
+   Create a real X Money payment request (amount + reference + optional note) instead of relying on manual P2P + copy-paste.
+
+2. **Optional auto-matching**  
+   If X provides webhooks or a status endpoint, match incoming payments to `XM-XXXXX` references and surface them in the dashboard (still with merchant confirmation by default).
+
+3. **Keep the manual path**  
+   Manual Mark paid stays available. Not everyone will want full automation, and privacy-conscious sellers should retain control.
+
+4. **No forced SaaS**  
+   The open-source, self-hosted model remains the default. Any future hosted option would be optional, not required.
+
+Until that API exists, v0.1 stays focused on what actually works today: clean references, clear buyer instructions, and a simple merchant dashboard.
+
+---
+
 ## Contributing
 
 - Minimal data model. New fields need a privacy justification.
